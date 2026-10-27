@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Food Order Service</title>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -12,11 +13,22 @@
       background: #fff8f0;
       color: #333;
     }
-    h1, h2 { color: #b34320; }
+
+    h1, h2, h3 {
+      color: #b34320;
+    }
+
     input, button, select {
       padding: 10px;
       margin: 5px;
+      box-sizing: border-box;
     }
+
+    input, select {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
     button {
       cursor: pointer;
       background: #b34320;
@@ -24,36 +36,122 @@
       border: none;
       border-radius: 4px;
     }
+
+    button:hover {
+      background: #873018;
+    }
+
     .item {
       background: white;
       padding: 12px;
       margin: 8px 0;
       border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+
+    .section {
+      background: #fff;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 8px;
+      border: 1px solid #eee;
+    }
+
+    #message {
+      font-weight: bold;
+      color: #267326;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        margin: 12px;
+      }
+
+      input, select {
+        width: 100%;
+        margin: 5px 0;
+      }
     }
   </style>
 </head>
+
 <body>
   <h1>Online Food Ordering</h1>
 
-  <h2>Food Menu</h2>
-  <div id="menu"></div>
+  <!-- FOOD MENU -->
+  <div class="section">
+    <h2>Food Menu</h2>
+    <div id="menu">Loading food menu...</div>
+  </div>
 
-  <h3>Add / Update Dish</h3>
-  <input id="foodId" type="number" placeholder="ID (for update)">
-  <input id="name" placeholder="Food name">
-  <input id="price" type="number" placeholder="Price">
-  <input id="category" placeholder="Category">
-  <button onclick="saveFood()">Save Dish</button>
+  <!-- ADD OR EDIT DISH -->
+  <div class="section">
+    <h2 id="formTitle">Add New Dish</h2>
 
-  <h2>Place Order</h2>
-  <input id="customer" placeholder="Customer name">
-  <select id="foodChoice"></select>
-  <input id="quantity" type="number" min="1" value="1">
-  <button onclick="placeOrder()">Order Now</button>
+    <input
+      id="foodId"
+      type="number"
+      placeholder="Dish ID (for editing)"
+      readonly
+    >
 
-  <h2>Customer Orders</h2>
-  <div id="orders"></div>
-  <p id="message"></p>
+    <input
+      id="name"
+      type="text"
+      placeholder="Food name"
+    >
+
+    <input
+      id="price"
+      type="number"
+      min="1"
+      step="0.01"
+      placeholder="Price (₹)"
+    >
+
+    <input
+      id="category"
+      type="text"
+      placeholder="Category"
+    >
+
+    <button onclick="saveFood()">Add / Save Dish</button>
+    <button onclick="clearFoodForm()">Clear Form</button>
+  </div>
+
+  <!-- PLACE ORDER -->
+  <div class="section">
+    <h2>Place Order</h2>
+
+    <input
+      id="customer"
+      type="text"
+      placeholder="Customer name"
+    >
+
+    <select id="foodChoice">
+      <option value="">Select a dish</option>
+    </select>
+
+    <input
+      id="quantity"
+      type="number"
+      min="1"
+      step="1"
+      value="1"
+      placeholder="Quantity"
+    >
+
+    <button onclick="placeOrder()">Order Now</button>
+  </div>
+
+  <!-- CUSTOMER ORDERS -->
+  <div class="section">
+    <h2>Customer Orders</h2>
+    <div id="orders">Loading orders...</div>
+  </div>
+
+  <p id="message" role="status" aria-live="polite"></p>
 
   <script>
     async function request(url, options = {}) {
@@ -64,117 +162,270 @@
           ...(options.headers || {})
         }
       });
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Request failed");
+
+      if (!res.ok) {
+        throw new Error(data.error || "Request failed");
+      }
+
       return data;
     }
 
+    // LOAD FOOD MENU AND CUSTOMER ORDERS
     async function refresh() {
       try {
         const foods = await request("/api/foods");
-        document.getElementById("menu").innerHTML = foods.map(f =>
-          `<div class="item">
-            ${f.id}. ${f.name} - ₹${f.price} (${f.category})
-            <button onclick="editFood(${f.id})">Edit</button>
-            <button onclick="deleteFood(${f.id})">Delete</button>
-          </div>`
-        ).join("");
 
-        document.getElementById("foodChoice").innerHTML = foods.map(f =>
-          `<option value="${f.id}">${f.name} - ₹${f.price}</option>`
-        ).join("");
+        const menu = document.getElementById("menu");
+
+        if (foods.length === 0) {
+          menu.textContent = "No dishes available. Add a new dish below.";
+        } else {
+          menu.innerHTML = foods.map(f => `
+            <div class="item">
+              <strong>${escapeHTML(f.name)}</strong>
+              - ₹${f.price}
+              (${escapeHTML(f.category)})
+              <br>
+              Dish ID: ${f.id}
+              <br>
+              <button onclick="editFood(${f.id})">Edit</button>
+              <button onclick="deleteFood(${f.id})">Delete</button>
+            </div>
+          `).join("");
+        }
+
+        const foodChoice = document.getElementById("foodChoice");
+        const previousChoice = foodChoice.value;
+
+        foodChoice.innerHTML =
+          '<option value="">Select a dish</option>' +
+          foods.map(f => `
+            <option value="${f.id}">
+              ${escapeHTML(f.name)} - ₹${f.price}
+            </option>
+          `).join("");
+
+        if (foods.some(f => String(f.id) === previousChoice)) {
+          foodChoice.value = previousChoice;
+        }
 
         const orders = await request("/api/orders");
-        document.getElementById("orders").innerHTML = orders.map(o =>
-          `<div class="item">
-            Order ${o.id}: ${o.customer} - ${o.foodName}
-            x ${o.quantity} = ₹${o.total}
-            <br>Status: ${o.status}
-            <button onclick="updateOrder(${o.id})">Next Status</button>
-            <button onclick="deleteOrder(${o.id})">Delete</button>
-          </div>`
-        ).join("");
+        const ordersDiv = document.getElementById("orders");
+
+        if (orders.length === 0) {
+          ordersDiv.textContent = "No customer orders yet.";
+        } else {
+          ordersDiv.innerHTML = orders.map(o => `
+            <div class="item">
+              <strong>Order ${o.id}</strong>
+              <br>
+              Customer: ${escapeHTML(o.customer)}
+              <br>
+              Dish: ${escapeHTML(o.foodName)}
+              <br>
+              Quantity: ${o.quantity}
+              <br>
+              Total: ₹${o.total}
+              <br>
+              Status: ${escapeHTML(o.status)}
+              <br>
+              <button onclick="updateOrder(${o.id})">
+                Next Status
+              </button>
+              <button onclick="deleteOrder(${o.id})">
+                Delete Order
+              </button>
+            </div>
+          `).join("");
+        }
       } catch (e) {
-        show(e.message);
+        show(e.message, true);
       }
     }
 
+    // BASIC HTML ESCAPING FOR DISPLAYED TEXT
+    function escapeHTML(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[char]);
+    }
+
+    // ADD A NEW DISH OR UPDATE AN EXISTING DISH
     async function saveFood() {
       try {
         const id = document.getElementById("foodId").value;
-        const body = {
-          name: document.getElementById("name").value.trim(),
-          price: Number(document.getElementById("price").value),
-          category: document.getElementById("category").value.trim()
-        };
-        await request(id ? `/api/foods/${id}` : "/api/foods", {
-          method: id ? "PUT" : "POST",
-          body: JSON.stringify(body)
-        });
-        show("Dish saved successfully");
-        refresh();
-      } catch (e) { show(e.message); }
+        const name = document.getElementById("name").value.trim();
+        const priceText = document.getElementById("price").value;
+        const category = document.getElementById("category").value.trim();
+        const price = Number(priceText);
+
+        if (!name || !priceText || !Number.isFinite(price) ||
+            price <= 0 || !category) {
+          show("Enter a valid dish name, price and category.", true);
+          return;
+        }
+
+        const body = { name, price, category };
+
+        await request(
+          id ? `/api/foods/${id}` : "/api/foods",
+          {
+            method: id ? "PUT" : "POST",
+            body: JSON.stringify(body)
+          }
+        );
+
+        show(id ? "Dish updated successfully!" : "New dish added successfully!");
+        clearFoodForm();
+        await refresh();
+      } catch (e) {
+        show(e.message, true);
+      }
     }
 
+    // LOAD A DISH INTO THE FORM FOR EDITING
     async function editFood(id) {
-      const foods = await request("/api/foods");
-      const f = foods.find(x => x.id === id);
-      document.getElementById("foodId").value = f.id;
-      document.getElementById("name").value = f.name;
-      document.getElementById("price").value = f.price;
-      document.getElementById("category").value = f.category;
-    }
-
-    async function deleteFood(id) {
       try {
-        await request(`/api/foods/${id}`, { method: "DELETE" });
-        show("Dish deleted");
-        refresh();
-      } catch (e) { show(e.message); }
+        const foods = await request("/api/foods");
+        const food = foods.find(f => f.id === id);
+
+        if (!food) {
+          show("Dish not found.", true);
+          return;
+        }
+
+        document.getElementById("foodId").value = food.id;
+        document.getElementById("name").value = food.name;
+        document.getElementById("price").value = food.price;
+        document.getElementById("category").value = food.category;
+        document.getElementById("formTitle").textContent = "Update Dish";
+
+        document.getElementById("name").focus();
+        show("Edit the dish details and click Save Dish.");
+      } catch (e) {
+        show(e.message, true);
+      }
     }
 
+    // CLEAR THE DISH FORM
+    function clearFoodForm() {
+      document.getElementById("foodId").value = "";
+      document.getElementById("name").value = "";
+      document.getElementById("price").value = "";
+      document.getElementById("category").value = "";
+      document.getElementById("formTitle").textContent = "Add New Dish";
+    }
+
+    // DELETE A DISH
+    async function deleteFood(id) {
+      if (!confirm("Are you sure you want to delete this dish?")) {
+        return;
+      }
+
+      try {
+        await request(`/api/foods/${id}`, {
+          method: "DELETE"
+        });
+
+        show("Dish deleted successfully!");
+        await refresh();
+      } catch (e) {
+        show(e.message, true);
+      }
+    }
+
+    // PLACE A CUSTOMER ORDER
     async function placeOrder() {
       try {
+        const customer = document.getElementById("customer").value.trim();
+        const foodId = Number(document.getElementById("foodChoice").value);
+        const quantity = Number(document.getElementById("quantity").value);
+
+        if (!customer || !foodId ||
+            !Number.isInteger(quantity) || quantity < 1) {
+          show("Enter a customer name, select a dish and enter a valid quantity.", true);
+          return;
+        }
+
         await request("/api/orders", {
           method: "POST",
           body: JSON.stringify({
-            customer: document.getElementById("customer").value,
-            foodId: Number(document.getElementById("foodChoice").value),
-            quantity: Number(document.getElementById("quantity").value)
+            customer,
+            foodId,
+            quantity
           })
         });
-        show("Order placed successfully");
-        refresh();
-      } catch (e) { show(e.message); }
+
+        document.getElementById("customer").value = "";
+        document.getElementById("quantity").value = "1";
+
+        show("Order placed successfully!");
+        await refresh();
+      } catch (e) {
+        show(e.message, true);
+      }
     }
 
+    // CYCLE THROUGH ORDER STATUSES
     async function updateOrder(id) {
       try {
         const orders = await request("/api/orders");
-        const o = orders.find(x => x.id === id);
+        const order = orders.find(o => o.id === id);
+
+        if (!order) {
+          show("Order not found.", true);
+          return;
+        }
+
         const statuses = ["Pending", "Preparing", "Delivered"];
-        const next = statuses[(statuses.indexOf(o.status) + 1) % statuses.length];
+        const currentIndex = statuses.indexOf(order.status);
+        const nextStatus = statuses[(currentIndex + 1) % statuses.length];
+
         await request(`/api/orders/${id}`, {
           method: "PUT",
-          body: JSON.stringify({ status: next })
+          body: JSON.stringify({ status: nextStatus })
         });
-        refresh();
-      } catch (e) { show(e.message); }
+
+        show(`Order status updated to ${nextStatus}.`);
+        await refresh();
+      } catch (e) {
+        show(e.message, true);
+      }
     }
 
+    // DELETE A CUSTOMER ORDER
     async function deleteOrder(id) {
+      if (!confirm("Are you sure you want to delete this order?")) {
+        return;
+      }
+
       try {
-        await request(`/api/orders/${id}`, { method: "DELETE" });
-        refresh();
-      } catch (e) { show(e.message); }
+        await request(`/api/orders/${id}`, {
+          method: "DELETE"
+        });
+
+        show("Order deleted successfully!");
+        await refresh();
+      } catch (e) {
+        show(e.message, true);
+      }
     }
 
-    function show(message) {
-      document.getElementById("message").textContent = message;
+    // DISPLAY SUCCESS OR ERROR MESSAGES
+    function show(message, isError = false) {
+      const messageElement = document.getElementById("message");
+      messageElement.textContent = message;
+      messageElement.style.color = isError ? "#b00020" : "#267326";
     }
 
+    // LOAD THE PAGE DATA WHEN THE PAGE OPENS
     refresh();
   </script>
 </body>
 </html>
-
